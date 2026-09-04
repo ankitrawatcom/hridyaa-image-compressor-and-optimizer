@@ -1,0 +1,25 @@
+﻿{
+  "name": "hridyaa/hridyaa-image-compressor-and-optimizer",
+  "description": "High-performance, lightweight Next-Generation WebP Image Optimizer for WordPress.",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=7.4"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.6 || ^10.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "NextGen\\": "includes/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "NextGen\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit"
+  }
+}

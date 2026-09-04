@@ -1,0 +1,28 @@
+﻿# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Third-party Dependencies
+vendor/
+node_modules/
+
+# Testing & Cache
+.phpunit.cache/
+.phpunit.result.cache
+coverage/
+*.coverage
+scratch/
+
+# Build & Archives
+dist/
+*.zip
+*.tar.gz
+
+# Logs & System
+*.log
+logs/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
