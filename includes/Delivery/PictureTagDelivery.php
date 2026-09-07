@@ -158,13 +158,17 @@ class PictureTagDelivery implements DeliveryInterface {
             return $imgTag;
         }
 
+        $optimizationFormat = $this->config->get('optimization_format', 'avif_webp');
+        $allowAvif = in_array($optimizationFormat, ['avif', 'avif_webp'], true);
+        $allowWebp = in_array($optimizationFormat, ['webp', 'avif_webp'], true);
+
         $avifPath = FilenameHelper::generateAvifPath($localPath);
         $webpPath = FilenameHelper::generateWebpPath($localPath);
 
-        $hasAvif = file_exists($avifPath) && filesize($avifPath) > 0;
-        $hasWebp = file_exists($webpPath) && filesize($webpPath) > 0;
+        $hasAvif = $allowAvif && file_exists($avifPath) && filesize($avifPath) > 0;
+        $hasWebp = $allowWebp && file_exists($webpPath) && filesize($webpPath) > 0;
 
-        // If neither modern format exists, leave original <img> untouched
+        // If neither allowed modern format exists, leave original <img> untouched
         if (!$hasAvif && !$hasWebp) {
             return $imgTag;
         }

@@ -82,6 +82,7 @@ class PreviewGeneratorTest extends TestCase {
         $res = PreviewGenerator::generatePreview($attachmentId, 'webp', 'high');
         $this->assertTrue($res['success']);
         $this->assertArrayHasKey('preview_url', $res);
+        $this->assertArrayHasKey('original_url', $res);
         $this->assertGreaterThan(0, $res['preview_size']);
 
         // Assert StatsManager remains untouched at 0 bytes saved
@@ -92,5 +93,170 @@ class PreviewGeneratorTest extends TestCase {
         // Clean up
         @unlink($sourceJpg);
         PreviewGenerator::cleanupExpiredPreviews(0);
+    }
+
+    public function testCleanupWhenDirectoryDoesNotExist(): void {
+        $nonExistentDir = sys_get_temp_dir() . '/nextgen_nonexistent_' . uniqid();
+        global $mock_upload_dir;
+        $mock_upload_dir = ['basedir' => $nonExistentDir, 'baseurl' => 'https://example.com/uploads'];
+
+        $purged = PreviewGenerator::cleanupExpiredPreviews(0);
+        $this->assertSame(0, $purged);
+
+        $purgedAlias = PreviewGenerator::cleanOldPreviews(0);
+        $this->assertSame(0, $purgedAlias);
+    }
+
+    public function testCleanupWhenDirectoryIsEmpty(): void {
+        $baseDir = sys_get_temp_dir() . '/nextgen_empty_test_' . uniqid();
+        $previewDir = $baseDir . '/' . PreviewGenerator::PREVIEW_DIR_NAME;
+        @mkdir($previewDir, 0750, true);
+
+        global $mock_upload_dir;
+        $mock_upload_dir = ['basedir' => $baseDir, 'baseurl' => 'https://example.com/uploads'];
+
+        $purged = PreviewGenerator::cleanupExpiredPreviews(0);
+        $this->assertSame(0, $purged);
+
+        @rmdir($previewDir);
+        @rmdir($baseDir);
+    }
+
+    public function testCleanupSingleAndMultipleFiles(): void {
+        $baseDir = sys_get_temp_dir() . '/nextgen_multi_test_' . uniqid();
+        $previewDir = $baseDir . '/' . PreviewGenerator::PREVIEW_DIR_NAME;
+        @mkdir($previewDir, 0750, true);
+
+        global $mock_upload_dir;
+        $mock_upload_dir = ['basedir' => $baseDir, 'baseurl' => 'https://example.com/uploads'];
+
+        $file1 = $previewDir . '/preview_1_webp_balanced_123456.webp';
+        $file2 = $previewDir . '/preview_2_avif_high_654321.avif';
+        file_put_contents($file1, 'PREVIEW_DATA_1');
+        file_put_contents($file2, 'PREVIEW_DATA_2');
+
+        $this->assertFileExists($file1);
+        $this->assertFileExists($file2);
+
+        $purged = PreviewGenerator::cleanupExpiredPreviews(0);
+        $this->assertSame(2, $purged);
+        $this->assertFileDoesNotExist($file1);
+        $this->assertFileDoesNotExist($file2);
+
+        @rmdir($previewDir);
+        @rmdir($baseDir);
+    }
+
+    public function testCleanupPreservesHtaccessIndexPhpAndSubdirs(): void {
+        $baseDir = sys_get_temp_dir() . '/nextgen_preserve_test_' . uniqid();
+        $previewDir = $baseDir . '/' . PreviewGenerator::PREVIEW_DIR_NAME;
+        PreviewGenerator::ensurePreviewDirectory($previewDir);
+
+        global $mock_upload_dir;
+        $mock_upload_dir = ['basedir' => $baseDir, 'baseurl' => 'https://example.com/uploads'];
+
+        $previewFile = $previewDir . '/preview_99_webp_balanced_abc123.webp';
+        $otherFile = $previewDir . '/other_custom_file.txt';
+        $subDir = $previewDir . '/nested_folder';
+
+        file_put_contents($previewFile, 'PREVIEW_DATA');
+        file_put_contents($otherFile, 'CUSTOM_DATA');
+        @mkdir($subDir, 0750, true);
+
+        $this->assertFileExists($previewDir . '/.htaccess');
+        $this->assertFileExists($previewDir . '/index.php');
+        $this->assertFileExists($otherFile);
+        $this->assertDirectoryExists($subDir);
+
+        $purged = PreviewGenerator::cleanupExpiredPreviews(0);
+        $this->assertSame(1, $purged);
+
+        // Preview file deleted
+        $this->assertFileDoesNotExist($previewFile);
+
+        // Security files and subdirectories preserved
+        $this->assertFileExists($previewDir . '/.htaccess');
+        $this->assertFileExists($previewDir . '/index.php');
+        $this->assertFileExists($otherFile);
+        $this->assertDirectoryExists($subDir);
+
+        @unlink($otherFile);
+        @unlink($previewDir . '/.htaccess');
+        @unlink($previewDir . '/index.php');
+        @rmdir($subDir);
+        @rmdir($previewDir);
+        @rmdir($baseDir);
+    }
+
+    public function testCleanupInvokedTwiceIsIdempotent(): void {
+        $baseDir = sys_get_temp_dir() . '/nextgen_idempotent_test_' . uniqid();
+        $previewDir = $baseDir . '/' . PreviewGenerator::PREVIEW_DIR_NAME;
+        @mkdir($previewDir, 0750, true);
+
+        global $mock_upload_dir;
+        $mock_upload_dir = ['basedir' => $baseDir, 'baseurl' => 'https://example.com/uploads'];
+
+        $previewFile = $previewDir . '/preview_50_webp_balanced_xyz.webp';
+        file_put_contents($previewFile, 'DATA');
+
+        $firstRun = PreviewGenerator::cleanupExpiredPreviews(0);
+        $this->assertSame(1, $firstRun);
+
+        $secondRun = PreviewGenerator::cleanupExpiredPreviews(0);
+        $this->assertSame(0, $secondRun);
+
+        @rmdir($previewDir);
+        @rmdir($baseDir);
+    }
+
+    public function testCleanOldPreviewsAliasWorks(): void {
+        $baseDir = sys_get_temp_dir() . '/nextgen_alias_test_' . uniqid();
+        $previewDir = $baseDir . '/' . PreviewGenerator::PREVIEW_DIR_NAME;
+        @mkdir($previewDir, 0750, true);
+
+        global $mock_upload_dir;
+        $mock_upload_dir = ['basedir' => $baseDir, 'baseurl' => 'https://example.com/uploads'];
+
+        $previewFile = $previewDir . '/preview_77_webp_high_alias.webp';
+        file_put_contents($previewFile, 'DATA_ALIAS');
+
+        $purged = PreviewGenerator::cleanOldPreviews(0);
+        $this->assertSame(1, $purged);
+        $this->assertFileDoesNotExist($previewFile);
+
+        @rmdir($previewDir);
+        @rmdir($baseDir);
+    }
+
+    public function testCleanupExpiredPreviewsWithAgeFiltering(): void {
+        $baseDir = sys_get_temp_dir() . '/nextgen_age_test_' . uniqid();
+        $previewDir = $baseDir . '/' . PreviewGenerator::PREVIEW_DIR_NAME;
+        @mkdir($previewDir, 0750, true);
+
+        global $mock_upload_dir;
+        $mock_upload_dir = ['basedir' => $baseDir, 'baseurl' => 'https://example.com/uploads'];
+
+        $oldFile = $previewDir . '/preview_old_webp_balanced_111.webp';
+        $newFile = $previewDir . '/preview_new_webp_balanced_222.webp';
+
+        file_put_contents($oldFile, 'OLD_DATA');
+        file_put_contents($newFile, 'NEW_DATA');
+
+        // Set oldFile mtime to 3 hours ago (10800 seconds)
+        touch($oldFile, time() - 10800);
+        // Set newFile mtime to now
+        touch($newFile, time());
+
+        // Cleanup files older than 2 hours (7200 seconds)
+        $purged = PreviewGenerator::cleanupExpiredPreviews(7200);
+        $this->assertSame(1, $purged);
+
+        $this->assertFileDoesNotExist($oldFile);
+        $this->assertFileExists($newFile);
+
+        // Clean remaining
+        @unlink($newFile);
+        @rmdir($previewDir);
+        @rmdir($baseDir);
     }
 }

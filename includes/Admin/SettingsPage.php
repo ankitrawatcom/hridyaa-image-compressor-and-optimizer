@@ -372,6 +372,7 @@ class SettingsPage {
                         </p>
                     </div>
 
+                    <?php if (!\NextGen\Core\Features::isProActive()): ?>
                     <!-- Pro Upsell Card -->
                     <div class="nextgen-card nextgen-card-pro-upsell">
                         <div class="nextgen-pro-badge"><?php esc_html_e('HRIDYAA PRO', 'hridyaa-image-compressor-and-optimizer'); ?></div>
@@ -382,6 +383,7 @@ class SettingsPage {
                             <?php esc_html_e('Upgrade to Pro ★', 'hridyaa-image-compressor-and-optimizer'); ?>
                         </a>
                     </div>
+                    <?php endif; ?>
 
                     <?php if (!\NextGen\Core\Features::isAvifEnabled()) : ?>
                         <!-- Pro License Activation Card for Free Users -->

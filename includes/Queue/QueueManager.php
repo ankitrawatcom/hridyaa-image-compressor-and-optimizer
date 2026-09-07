@@ -109,14 +109,24 @@ class QueueManager {
     public static function resetAllMetadata(): int {
         global $wpdb;
 
+        if (class_exists('\NextGen\Admin\StatsManager')) {
+            delete_option(\NextGen\Admin\StatsManager::OPTION_KEY);
+        }
+
         if (!isset($wpdb) || !is_object($wpdb)) {
             return 0;
         }
 
+        $metaKeys = [MetadataManager::META_KEY];
+        if (class_exists('\NextGen\Admin\StatsManager')) {
+            $metaKeys[] = \NextGen\Admin\StatsManager::META_KEY;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($metaKeys), '%s'));
         return (int) $wpdb->query(
             $wpdb->prepare(
-                "DELETE FROM {$wpdb->postmeta} WHERE meta_key = %s",
-                MetadataManager::META_KEY
+                "DELETE FROM {$wpdb->postmeta} WHERE meta_key IN ($placeholders)",
+                ...$metaKeys
             )
         );
     }

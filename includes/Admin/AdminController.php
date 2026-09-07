@@ -38,6 +38,7 @@ class AdminController {
         add_action('admin_post_nextgen_tool_reset_metadata', [$this, 'handleToolResetMetadata']);
         add_action('admin_post_nextgen_tool_clear_failed', [$this, 'handleToolClearFailed']);
         add_action('admin_post_nextgen_tool_purge_previews', [$this, 'handleToolPurgePreviews']);
+        add_action('admin_post_nextgen_tool_reconcile_stats', [$this, 'handleToolReconcileStats']);
         add_action('admin_post_nextgen_pro_save_license', [$this, 'handleProActivationAction']);
         add_action('admin_notices', [$this, 'renderAdminNotices']);
 
@@ -244,15 +245,17 @@ class AdminController {
             [$this, 'renderHelpPage']
         );
 
-        // 8. Upgrade to Pro
-        add_submenu_page(
-            self::MENU_SLUG,
-            __('Upgrade to Pro ‹ Hridyaa Image Compressor and Optimizer', 'hridyaa-image-compressor-and-optimizer'),
-            '<span style="color:#d97706;font-weight:600;">' . esc_html__('Upgrade to Pro ★', 'hridyaa-image-compressor-and-optimizer') . '</span>',
-            'manage_options',
-            'https://ankitrawat.com/products/hridyaa-image-compressor-and-optimizer/',
-            '__return_null'
-        );
+        // 8. Upgrade to Pro (Free-tier only)
+        if (!\NextGen\Core\Features::isProActive()) {
+            add_submenu_page(
+                self::MENU_SLUG,
+                __('Upgrade to Pro ‹ Hridyaa Image Compressor and Optimizer', 'hridyaa-image-compressor-and-optimizer'),
+                '<span style="color:#d97706;font-weight:600;">' . esc_html__('Upgrade to Pro ★', 'hridyaa-image-compressor-and-optimizer') . '</span>',
+                'manage_options',
+                'https://ankitrawat.com/products/hridyaa-image-compressor-and-optimizer/',
+                '__return_null'
+            );
+        }
     }
 
     public function renderDashboardPage(): void {
@@ -330,23 +333,30 @@ class AdminController {
             return;
         }
 
-        $pluginFile = defined('NEXTGEN_FILE') ? NEXTGEN_FILE : dirname(dirname(__FILE__)) . '/nextgen-image-optimizer.php';
+        $pluginFile = defined('NEXTGEN_FILE') ? NEXTGEN_FILE : dirname(__DIR__, 2) . '/nextgen-image-optimizer.php';
         $cssUrl = plugins_url('assets/css/admin.css', $pluginFile);
         $jsUrl  = plugins_url('assets/js/admin.js', $pluginFile);
-        $version = defined('NEXTGEN_VERSION') ? NEXTGEN_VERSION : '1.2.0';
+        $baseVersion = defined('NEXTGEN_VERSION') ? NEXTGEN_VERSION : '1.2.1';
+
+        $pluginDir = dirname($pluginFile);
+        $cssFile = $pluginDir . '/assets/css/admin.css';
+        $jsFile  = $pluginDir . '/assets/js/admin.js';
+
+        $cssVersion = file_exists($cssFile) ? $baseVersion . '.' . filemtime($cssFile) : $baseVersion;
+        $jsVersion  = file_exists($jsFile) ? $baseVersion . '.' . filemtime($jsFile) : $baseVersion;
 
         wp_enqueue_style(
             'nextgen-admin-css',
             $cssUrl,
             ['dashicons'],
-            $version
+            $cssVersion
         );
 
         wp_enqueue_script(
             'nextgen-admin-js',
             $jsUrl,
             ['jquery'],
-            $version,
+            $jsVersion,
             true
         );
 
@@ -440,8 +450,10 @@ class AdminController {
 
         $count = QueueManager::resetAllMetadata();
         $msg = sprintf(__('Conversion metadata reset for %d images.', 'nextgen-image-optimizer'), $count);
-        wp_safe_redirect(add_query_arg(['page' => 'nextgen-tools', 'tool-executed' => urlencode($msg)], admin_url('admin.php')));
-        exit;
+        wp_safe_redirect(add_query_arg(['page' => 'nextgen-tools', 'tool-executed' => $msg], admin_url('admin.php')));
+        if (!defined('NEXTGEN_TESTING')) {
+            exit;
+        }
     }
 
     public function handleToolClearFailed(): void {
@@ -454,8 +466,10 @@ class AdminController {
 
         FailedQueueManager::clearQueue();
         $msg = __('Failed conversion error log cleared.', 'nextgen-image-optimizer');
-        wp_safe_redirect(add_query_arg(['page' => 'nextgen-tools', 'tool-executed' => urlencode($msg)], admin_url('admin.php')));
-        exit;
+        wp_safe_redirect(add_query_arg(['page' => 'nextgen-tools', 'tool-executed' => $msg], admin_url('admin.php')));
+        if (!defined('NEXTGEN_TESTING')) {
+            exit;
+        }
     }
 
     public function handleToolPurgePreviews(): void {
@@ -466,10 +480,44 @@ class AdminController {
             wp_die(esc_html__('Permission denied.', 'nextgen-image-optimizer'));
         }
 
-        PreviewGenerator::cleanOldPreviews(0);
-        $msg = __('Quality Visualizer preview cache purged.', 'nextgen-image-optimizer');
-        wp_safe_redirect(add_query_arg(['page' => 'nextgen-tools', 'tool-executed' => urlencode($msg)], admin_url('admin.php')));
-        exit;
+        try {
+            $purged = PreviewGenerator::cleanupExpiredPreviews(0);
+            $msg = sprintf(__('Quality Visualizer preview cache purged (%d file(s) removed).', 'nextgen-image-optimizer'), $purged);
+            $redirectUrl = add_query_arg(['page' => 'nextgen-tools', 'tool-executed' => $msg], admin_url('admin.php'));
+        } catch (\Throwable $e) {
+            if (function_exists('error_log')) {
+                error_log('[Hridyaa Optimizer] Preview purge failed: ' . get_class($e) . ' - ' . $e->getMessage());
+            }
+            $errorMsg = __('Unable to purge Quality Visualizer preview cache. Please check your server error logs.', 'nextgen-image-optimizer');
+            $redirectUrl = add_query_arg(['page' => 'nextgen-tools', 'tool-error' => $errorMsg], admin_url('admin.php'));
+        }
+
+        wp_safe_redirect($redirectUrl);
+        if (!defined('NEXTGEN_TESTING')) {
+            exit;
+        }
+    }
+
+    public function handleToolReconcileStats(): void {
+        if (!check_admin_referer('nextgen_tool_reconcile_stats', 'nextgen_tool_nonce')) {
+            wp_die(esc_html__('Security check failed.', 'nextgen-image-optimizer'));
+        }
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Permission denied.', 'nextgen-image-optimizer'));
+        }
+
+        $stats = StatsManager::recalculateAllStats();
+        $msg = sprintf(
+            __('Optimization statistics reconciled: %d images processed, %s storage saved across %d WebP and %d AVIF derivatives.', 'nextgen-image-optimizer'),
+            $stats['total_originals_processed'],
+            ReportsView::formatBytes($stats['total_bytes_saved']),
+            $stats['total_webp_generated'],
+            $stats['total_avif_generated']
+        );
+        wp_safe_redirect(add_query_arg(['page' => 'nextgen-tools', 'tool-executed' => $msg], admin_url('admin.php')));
+        if (!defined('NEXTGEN_TESTING')) {
+            exit;
+        }
     }
 
     public function handleProActivationAction(): void {
@@ -492,7 +540,10 @@ class AdminController {
                 'pro-message' => 'Security check failed. Please refresh the page and try again.',
             ], $settingsUrl);
             wp_safe_redirect($redirect);
-            exit;
+            if (!defined('NEXTGEN_TESTING')) {
+                exit;
+            }
+            return;
         }
 
         // 2. Capability check
@@ -502,7 +553,10 @@ class AdminController {
                 'pro-message' => 'You do not have sufficient permissions to manage Pro licenses.',
             ], $settingsUrl);
             wp_safe_redirect($redirect);
-            exit;
+            if (!defined('NEXTGEN_TESTING')) {
+                exit;
+            }
+            return;
         }
 
         $licenseKey = isset($_POST['nextgen_license_key']) ? sanitize_text_field(wp_unslash($_POST['nextgen_license_key'])) : '';
@@ -512,7 +566,10 @@ class AdminController {
                 'pro-message' => 'Please enter a valid Pro license key.',
             ], $settingsUrl);
             wp_safe_redirect($redirect);
-            exit;
+            if (!defined('NEXTGEN_TESTING')) {
+                exit;
+            }
+            return;
         }
 
         try {
@@ -539,7 +596,9 @@ class AdminController {
         }
 
         wp_safe_redirect($redirect);
-        exit;
+        if (!defined('NEXTGEN_TESTING')) {
+            exit;
+        }
     }
 
     public function renderAdminNotices(): void {

@@ -44,14 +44,26 @@ class StatsManager {
     /**
      * Get current aggregated statistics.
      *
+     * @param bool $autoReconcileIfEmpty Whether to automatically reconcile stats from postmeta if option is empty but optimized images exist.
      * @return array<string, int|float>
      */
-    public static function getStats(): array {
+    public static function getStats(bool $autoReconcileIfEmpty = true): array {
         $stats = get_option(self::OPTION_KEY, null);
         if (!is_array($stats)) {
-            return self::getDefaultStats();
+            $stats = self::getDefaultStats();
+        } else {
+            $stats = array_merge(self::getDefaultStats(), $stats);
         }
-        return array_merge(self::getDefaultStats(), $stats);
+
+        // Lazy auto-reconciliation: If aggregated savings are 0 but postmeta records indicate optimized images exist
+        if ($autoReconcileIfEmpty && (int) ($stats['total_originals_processed'] ?? 0) === 0) {
+            $metaStats = \NextGen\Storage\MetadataManager::getStats();
+            if ((int) ($metaStats['optimized_images'] ?? 0) > 0) {
+                return self::recalculateAllStats();
+            }
+        }
+
+        return $stats;
     }
 
     /**
@@ -201,20 +213,27 @@ class StatsManager {
         // Query attachments carrying NextGen conversion metadata
         if (isset($wpdb) && !empty($wpdb->postmeta)) {
             $rows = $wpdb->get_results($wpdb->prepare("
-                SELECT post_id, meta_value FROM {$wpdb->postmeta} 
-                WHERE meta_key = %s
-            ", self::META_KEY));
+                SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta} 
+                WHERE meta_key IN (%s, %s)
+            ", self::META_KEY, \NextGen\Storage\MetadataManager::META_KEY));
 
             if ($rows) {
+                $processedPosts = [];
                 foreach ($rows as $row) {
-                    $meta = maybe_unserialize($row->meta_value);
+                    $postId = (int) (is_object($row) ? ($row->post_id ?? ($row->ID ?? 0)) : ($row['post_id'] ?? 0));
+                    if ($postId <= 0 || isset($processedPosts[$postId])) {
+                        continue;
+                    }
+                    $rawMeta = is_object($row) ? ($row->meta_value ?? '') : ($row['meta_value'] ?? '');
+                    $meta = maybe_unserialize($rawMeta);
                     if (!is_array($meta)) {
                         continue;
                     }
 
-                    $origBytes = (int) ($meta['original_size'] ?? 0);
+                    $origBytes = (int) ($meta['original_size'] ?? ($meta['total_original_bytes'] ?? 0));
                     $hasFormat = false;
 
+                    // Support _nextgen_conversion_data format
                     if (!empty($meta['webp']['generated']) && !empty($meta['webp']['saved'])) {
                         $stats['total_webp_generated']++;
                         $stats['total_webp_bytes'] += (int) ($meta['webp']['size'] ?? 0);
@@ -229,7 +248,40 @@ class StatsManager {
                         $hasFormat = true;
                     }
 
+                    // Support _nextgen_webp_data format
+                    if (!$hasFormat && !empty($meta['formats']) && is_array($meta['formats'])) {
+                        if (!empty($meta['formats']['webp']['status']) && $meta['formats']['webp']['status'] === 'completed') {
+                            $saved = (int) ($meta['formats']['webp']['saved_bytes'] ?? 0);
+                            $opt = max(0, $origBytes - $saved);
+                            $stats['total_webp_generated']++;
+                            $stats['total_webp_bytes'] += $opt;
+                            $stats['total_bytes_saved'] += $saved;
+                            $hasFormat = true;
+                        }
+                        if (!empty($meta['formats']['avif']['status']) && $meta['formats']['avif']['status'] === 'completed') {
+                            $saved = (int) ($meta['formats']['avif']['saved_bytes'] ?? 0);
+                            $opt = max(0, $origBytes - $saved);
+                            $stats['total_avif_generated']++;
+                            $stats['total_avif_bytes'] += $opt;
+                            $stats['total_bytes_saved'] += $saved;
+                            $hasFormat = true;
+                        }
+                    }
+
+                    // Fallback for standard _nextgen_webp_data without explicit formats array
+                    if (!$hasFormat && !empty($meta['status']) && $meta['status'] === 'completed') {
+                        $saved = (int) ($meta['total_saved_bytes'] ?? 0);
+                        if ($saved > 0 || $origBytes > 0) {
+                            $opt = max(0, $origBytes - $saved);
+                            $stats['total_webp_generated']++;
+                            $stats['total_webp_bytes'] += $opt;
+                            $stats['total_bytes_saved'] += $saved;
+                            $hasFormat = true;
+                        }
+                    }
+
                     if ($hasFormat) {
+                        $processedPosts[$postId] = true;
                         $stats['total_originals_processed']++;
                         $stats['total_original_bytes'] += $origBytes;
                     }

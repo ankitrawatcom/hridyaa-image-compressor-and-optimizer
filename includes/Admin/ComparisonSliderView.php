@@ -26,6 +26,18 @@ class ComparisonSliderView {
         $activePreset = QualityPresetManager::getActivePreset();
         $isPro = \NextGen\Core\Features::isAvifEnabled();
 
+        $sampleImages = [];
+        if (function_exists('get_posts')) {
+            $sampleImages = get_posts([
+                'post_type'      => 'attachment',
+                'post_mime_type' => ['image/jpeg', 'image/png', 'image/gif'],
+                'post_status'    => 'inherit',
+                'posts_per_page' => 50,
+                'orderby'        => 'date',
+                'order'          => 'DESC',
+            ]);
+        }
+
         ob_start();
         ?>
         <div class="nextgen-comparison-card">
@@ -41,6 +53,26 @@ class ComparisonSliderView {
                     <label for="nextgen-comparison-sample"><strong><?php esc_html_e('Select Sample Image:', 'nextgen-image-optimizer'); ?></strong></label>
                     <select id="nextgen-comparison-sample" class="nextgen-select">
                         <option value=""><?php esc_html_e('-- Choose Media Attachment --', 'nextgen-image-optimizer'); ?></option>
+                        <?php if (!empty($sampleImages)) : ?>
+                            <?php foreach ($sampleImages as $sample) :
+                                $sampleId = (int) (is_object($sample) ? $sample->ID : ($sample['ID'] ?? 0));
+                                if ($sampleId <= 0) {
+                                    continue;
+                                }
+                                $title = function_exists('get_the_title') ? get_the_title($sampleId) : '';
+                                $filePath = function_exists('get_attached_file') ? get_attached_file($sampleId) : '';
+                                $url = function_exists('wp_get_attachment_url') ? wp_get_attachment_url($sampleId) : '';
+                                if (empty($title)) {
+                                    $title = !empty($filePath) ? basename($filePath) : sprintf(__('Image #%d', 'nextgen-image-optimizer'), $sampleId);
+                                }
+                                $fileSizeStr = (!empty($filePath) && file_exists($filePath) && function_exists('size_format')) ? ' (' . size_format((int) @filesize($filePath)) . ')' : '';
+                                $isSelected = ($defaultAttachmentId !== null && $defaultAttachmentId === $sampleId) ? 'selected' : '';
+                            ?>
+                                <option value="<?php echo esc_attr((string) $sampleId); ?>" data-original-url="<?php echo esc_url($url ?: ''); ?>" <?php echo $isSelected; ?>>
+                                    <?php echo esc_html(sprintf('#%d — %s%s', $sampleId, $title, $fileSizeStr)); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </select>
                 </div>
 

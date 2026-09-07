@@ -100,6 +100,7 @@ class AttachmentHandler {
         $this->lockedAttachments[$attachmentId] = true;
 
         try {
+            $options['attachment_id'] = $attachmentId;
             $fullPath = get_attached_file($attachmentId);
             if (empty($fullPath) || !file_exists($fullPath)) {
                 $this->recordFailure($attachmentId, 'file_not_found', 'Attached file path does not exist on disk.');
@@ -220,6 +221,20 @@ class AttachmentHandler {
                 'processed_at'         => time(),
             ]);
 
+            // Synchronize with StatsManager
+            if (class_exists('\NextGen\Admin\StatsManager')) {
+                foreach ($formatsReport as $format => $formatData) {
+                    if (($formatData['status'] ?? '') === 'completed' || ($formatData['saved_bytes'] ?? 0) > 0) {
+                        $fSaved = (int) ($formatData['saved_bytes'] ?? 0);
+                        $fOrig = $totalOriginalBytes;
+                        $fOpt = max(0, $fOrig - $fSaved);
+                        $fEngine = $formatData['sizes']['full']['engine'] ?? 'gd';
+                        $fQuality = (int) ($formatData['sizes']['full']['quality'] ?? 82);
+                        \NextGen\Admin\StatsManager::recordConversion($attachmentId, $format, $fOrig, $fOpt, $fEngine, $fQuality);
+                    }
+                }
+            }
+
             return [
                 'status'        => $status,
                 'attachment_id' => $attachmentId,
@@ -248,6 +263,9 @@ class AttachmentHandler {
         $fullPath = get_attached_file($attachmentId);
         if (empty($fullPath)) {
             MetadataManager::deleteAttachmentData($attachmentId);
+            if (class_exists('\NextGen\Admin\StatsManager')) {
+                \NextGen\Admin\StatsManager::recordDeletion($attachmentId);
+            }
             return;
         }
 
@@ -270,6 +288,9 @@ class AttachmentHandler {
         }
 
         MetadataManager::deleteAttachmentData($attachmentId);
+        if (class_exists('\NextGen\Admin\StatsManager')) {
+            \NextGen\Admin\StatsManager::recordDeletion($attachmentId);
+        }
     }
 
     /**

@@ -36,6 +36,13 @@ class ConverterManager {
     private array $engines = [];
 
     /**
+     * Reentrancy guard for converter discovery.
+     *
+     * @var bool
+     */
+    private bool $isDiscovering = false;
+
+    /**
      * Constructor.
      *
      * @param Config $config Configuration instance.
@@ -52,9 +59,7 @@ class ConverterManager {
             }
         }
 
-        if (function_exists('do_action')) {
-            do_action('nextgen_register_converters', $this);
-        }
+        $this->discoverConverters();
     }
 
     /**
@@ -85,11 +90,32 @@ class ConverterManager {
     }
 
     /**
+     * Trigger converter registration hook with reentrancy protection.
+     *
+     * @return void
+     */
+    public function discoverConverters(): void {
+        if ($this->isDiscovering) {
+            return;
+        }
+
+        if (function_exists('do_action')) {
+            $this->isDiscovering = true;
+            try {
+                do_action('nextgen_register_converters', $this);
+            } finally {
+                $this->isDiscovering = false;
+            }
+        }
+    }
+
+    /**
      * Get registered engines.
      *
      * @return ConverterInterface[]
      */
     public function getEngines(): array {
+        $this->discoverConverters();
         return $this->engines;
     }
 
@@ -105,6 +131,15 @@ class ConverterManager {
                 return $engine;
             }
         }
+
+        // Lazy registration hook: allow Pro/addons to register engines if loaded after ConverterManager initialization
+        $this->discoverConverters();
+        foreach ($this->engines as $engine) {
+            if ($engine->supportsFormat($format)) {
+                return $engine;
+            }
+        }
+
         return null;
     }
 

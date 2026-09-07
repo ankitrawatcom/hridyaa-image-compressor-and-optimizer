@@ -23,6 +23,36 @@
         var $logContainer = $('#bulk-log');
         var $logList = $('#bulk-log-list');
 
+        /**
+         * Defensive helper to safely extract error message from any AJAX response shape.
+         */
+        function extractErrorMessage(response, defaultMsg) {
+            var fallback = defaultMsg || (nextgenOptimizer && nextgenOptimizer.i18n && nextgenOptimizer.i18n.error) || 'Server error';
+            if (!response) {
+                return fallback;
+            }
+            if (typeof response === 'string') {
+                return response;
+            }
+            if (response.data) {
+                if (typeof response.data === 'string') {
+                    return response.data;
+                }
+                if (typeof response.data === 'object') {
+                    if (response.data.message && typeof response.data.message === 'string') {
+                        return response.data.message;
+                    }
+                    if (response.data.error && typeof response.data.error === 'string') {
+                        return response.data.error;
+                    }
+                }
+            }
+            if (response.message && typeof response.message === 'string') {
+                return response.message;
+            }
+            return fallback;
+        }
+
         // Preset Radio Card Selection UI Feedback
         $('.nextgen-radio-card input[type="radio"]').on('change', function () {
             $('.nextgen-radio-card').removeClass('active');
@@ -81,8 +111,8 @@
             }, function (response) {
                 $btnStart.prop('disabled', false);
 
-                if (!response.success || !response.data.queue) {
-                    alert(response.data.message || nextgenOptimizer.i18n.error);
+                if (!response || !response.success || !response.data || !response.data.queue) {
+                    alert(extractErrorMessage(response, nextgenOptimizer.i18n.error));
                     $btnStart.html('<span class="dashicons dashicons-controls-play"></span> ' + nextgenOptimizer.i18n.startBulk);
                     return;
                 }
@@ -137,9 +167,9 @@
             }, function (response) {
                 $btnReset.prop('disabled', false);
 
-                if (response.success) {
+                if (response && response.success) {
                     alert(nextgenOptimizer.i18n.resetComplete);
-                    if (response.data.stats) {
+                    if (response.data && response.data.stats) {
                         updateLiveStats(response.data.stats);
                     }
                     $progressFill.css('width', '0%');
@@ -151,7 +181,7 @@
                     $logList.empty();
                     $logContainer.hide();
                 } else {
-                    alert(response.data.message || nextgenOptimizer.i18n.error);
+                    alert(extractErrorMessage(response, nextgenOptimizer.i18n.error));
                 }
             }).fail(function () {
                 $btnReset.prop('disabled', false);
@@ -169,10 +199,15 @@
                 nonce: nextgenOptimizer.nonce
             }, function (response) {
                 $btn.prop('disabled', false);
-                if (response.success) {
-                    alert(response.data.message || 'Queue cleared for retry.');
+                if (response && response.success) {
+                    alert(extractErrorMessage(response, 'Queue cleared for retry.'));
                     window.location.reload();
+                } else {
+                    alert(extractErrorMessage(response, nextgenOptimizer.i18n.error));
                 }
+            }).fail(function () {
+                $btn.prop('disabled', false);
+                alert(nextgenOptimizer.i18n.error);
             });
         });
 
@@ -188,9 +223,14 @@
                 nonce: nextgenOptimizer.nonce
             }, function (response) {
                 $btn.prop('disabled', false);
-                if (response.success) {
+                if (response && response.success) {
                     window.location.reload();
+                } else {
+                    alert(extractErrorMessage(response, nextgenOptimizer.i18n.error));
                 }
+            }).fail(function () {
+                $btn.prop('disabled', false);
+                alert(nextgenOptimizer.i18n.error);
             });
         });
 
@@ -204,11 +244,14 @@
                 nonce: nextgenOptimizer.nonce
             }, function (response) {
                 $btn.prop('disabled', false);
-                if (response.success) {
+                if (response && response.success) {
                     $('#cron-status-indicator').removeClass('nextgen-badge-neutral').addClass('nextgen-badge-success').text('Worker Running (WP-Cron)');
                 } else {
-                    alert(response.data.message || 'Failed to start background worker.');
+                    alert(extractErrorMessage(response, 'Failed to start background worker.'));
                 }
+            }).fail(function () {
+                $btn.prop('disabled', false);
+                alert(nextgenOptimizer.i18n.error);
             });
         });
 
@@ -221,9 +264,118 @@
                 nonce: nextgenOptimizer.nonce
             }, function (response) {
                 $btn.prop('disabled', false);
-                if (response.success) {
+                if (response && response.success) {
                     $('#cron-status-indicator').removeClass('nextgen-badge-success').addClass('nextgen-badge-neutral').text('Worker Idle');
+                } else {
+                    alert(extractErrorMessage(response, 'Failed to stop background worker.'));
                 }
+            }).fail(function () {
+                $btn.prop('disabled', false);
+                alert(nextgenOptimizer.i18n.error);
+            });
+        });
+
+        // Quality & Format Visualizer Interactive Split Slider
+        function setSliderPosition(percentage) {
+            percentage = Math.max(0, Math.min(100, percentage));
+            $('#nextgen-split-handle').css('left', percentage + '%');
+            $('#nextgen-split-overlay').css('clip-path', 'polygon(' + percentage + '% 0, 100% 0, 100% 100%, ' + percentage + '% 100%)');
+        }
+
+        var isDraggingSlider = false;
+
+        function updateSliderFromEvent(e) {
+            var $splitContainer = $('#nextgen-split-container');
+            if (!$splitContainer.length) return;
+            var offset = $splitContainer.offset();
+            var width = $splitContainer.width();
+            var pageX = e.pageX;
+            if (e.originalEvent && e.originalEvent.touches && e.originalEvent.touches.length > 0) {
+                pageX = e.originalEvent.touches[0].pageX;
+            }
+            if (pageX === undefined || width <= 0) return;
+            var relX = pageX - offset.left;
+            var pct = (relX / width) * 100;
+            setSliderPosition(pct);
+        }
+
+        $(document).on('mousedown touchstart', '#nextgen-split-container', function (e) {
+            isDraggingSlider = true;
+            updateSliderFromEvent(e);
+        });
+
+        $(document).on('mousemove touchmove', function (e) {
+            if (isDraggingSlider) {
+                updateSliderFromEvent(e);
+            }
+        });
+
+        $(document).on('mouseup touchend', function () {
+            isDraggingSlider = false;
+        });
+
+        $(document).on('click', '#nextgen-generate-preview-btn', function (e) {
+            e.preventDefault();
+            var $btn = $(this);
+            var $sampleSelect = $('#nextgen-comparison-sample');
+            var attachmentId = parseInt($sampleSelect.val(), 10);
+            if (!attachmentId || attachmentId <= 0) {
+                alert('Please select a sample image from the dropdown.');
+                return;
+            }
+
+            var format = $('input[name="nextgen_cmp_format"]:checked').val() || 'webp';
+            var preset = $('input[name="nextgen_cmp_preset"]:checked').val() || 'balanced';
+            var origUrl = $sampleSelect.find('option:selected').data('original-url') || '';
+            var origBtnHtml = $btn.html();
+
+            $btn.prop('disabled', true).text('Generating Live Preview...');
+
+            var $comparisonStage = $('#nextgen-comparison-stage');
+            var $imgOriginal = $('#nextgen-img-original');
+            var $imgPreview = $('#nextgen-img-preview');
+            var $labelAfter = $('#nextgen-label-after');
+            var $valOrig = $('#nextgen-val-orig');
+            var $valPrev = $('#nextgen-val-prev');
+            var $valSaved = $('#nextgen-val-saved');
+            var $valPercent = $('#nextgen-val-percent');
+
+            $.post(nextgenOptimizer.ajaxUrl, {
+                action: 'nextgen_generate_preview',
+                nonce: nextgenOptimizer.nonce,
+                attachment_id: attachmentId,
+                format: format,
+                preset: preset
+            }, function (response) {
+                $btn.prop('disabled', false).html(origBtnHtml);
+
+                if (response && response.success && response.data) {
+                    var data = response.data;
+                    var originalImageSrc = data.original_url || origUrl;
+
+                    $imgOriginal.attr('src', originalImageSrc);
+                    $imgPreview.attr('src', data.preview_url);
+
+                    $valOrig.text(formatBytes(data.original_size));
+                    $valPrev.text(formatBytes(data.preview_size));
+                    $valSaved.text(formatBytes(data.bytes_saved));
+                    $valPercent.text(data.percentage_saved + '%');
+
+                    $labelAfter.text('Optimized (' + format.toUpperCase() + ')');
+
+                    setSliderPosition(50);
+                    $comparisonStage.slideDown(200);
+                } else {
+                    var msg = extractErrorMessage(response, 'Failed to generate preview.');
+                    alert(msg);
+                }
+            }).fail(function (xhr) {
+                $btn.prop('disabled', false).html(origBtnHtml);
+                var msg = 'Preview generation failed.';
+                if (xhr && xhr.responseJSON) {
+                    msg = extractErrorMessage(xhr.responseJSON, msg);
+                }
+                alert(msg);
             });
         });
 
@@ -246,35 +398,42 @@
                 processedCount++;
                 updateProgress(processedCount, totalItems);
 
-                if (response.success && response.data.result) {
-                    var res = response.data.result;
-                    var saved = formatBytes(res.saved_bytes || 0);
+                try {
+                    if (response && response.success && response.data && response.data.result) {
+                        var res = response.data.result;
+                        var saved = formatBytes(res.saved_bytes || 0);
 
-                    if (res.status === 'completed') {
-                        logMessage('✔ #' + attachmentId + ' ' + nextgenOptimizer.i18n.converted + ' (' + nextgenOptimizer.i18n.saved + ': ' + saved + ')', 'log-success');
-                    } else if (res.status === 'skipped') {
-                        logMessage('⚠ #' + attachmentId + ' ' + nextgenOptimizer.i18n.skipped + ' (' + (res.reason || 'Larger') + ')', 'log-skipped');
+                        if (res.status === 'completed') {
+                            logMessage('✔ #' + attachmentId + ' ' + nextgenOptimizer.i18n.converted + ' (' + nextgenOptimizer.i18n.saved + ': ' + saved + ')', 'log-success');
+                        } else if (res.status === 'skipped') {
+                            logMessage('⚠ #' + attachmentId + ' ' + nextgenOptimizer.i18n.skipped + ' (' + (res.reason || 'Larger') + ')', 'log-skipped');
+                        } else {
+                            logMessage('✖ #' + attachmentId + ' ' + nextgenOptimizer.i18n.failed + ' (' + (res.error || 'unknown') + ')', 'log-error');
+                        }
+
+                        if (response.data.stats) {
+                            updateLiveStats(response.data.stats);
+                        }
                     } else {
-                        logMessage('✖ #' + attachmentId + ' ' + nextgenOptimizer.i18n.failed + ' (' + (res.error || 'unknown') + ')', 'log-error');
+                        var errMsg = extractErrorMessage(response, 'Server error');
+                        logMessage('✖ #' + attachmentId + ' ' + nextgenOptimizer.i18n.error + ': ' + errMsg, 'log-error');
                     }
-
-                    if (response.data.stats) {
-                        updateLiveStats(response.data.stats);
+                } catch (err) {
+                    var clientErrMsg = (err && err.message) ? err.message : 'Unknown client error';
+                    logMessage('✖ #' + attachmentId + ' client processing error: ' + clientErrMsg, 'log-error');
+                } finally {
+                    if (throttle > 0) {
+                        setTimeout(processNext, throttle);
+                    } else {
+                        processNext();
                     }
-                } else {
-                    logMessage('✖ #' + attachmentId + ' ' + nextgenOptimizer.i18n.error + ': ' + (response.data.message || 'Server error'), 'log-error');
                 }
 
-                if (throttle > 0) {
-                    setTimeout(processNext, throttle);
-                } else {
-                    processNext();
-                }
-
-            }).fail(function () {
+            }).fail(function (xhr) {
                 processedCount++;
                 updateProgress(processedCount, totalItems);
-                logMessage('✖ #' + attachmentId + ' request failed (Network timeout/error).', 'log-error');
+                var statusText = (xhr && xhr.statusText) ? xhr.statusText : 'Network timeout/error';
+                logMessage('✖ #' + attachmentId + ' request failed (' + statusText + ').', 'log-error');
 
                 if (throttle > 0) {
                     setTimeout(processNext, throttle);
@@ -299,10 +458,11 @@
         }
 
         function updateLiveStats(stats) {
-            $('#stat-total').text(stats.total_images);
-            $('#stat-optimized').text(stats.optimized_images);
-            $('#stat-pending').text(stats.pending_images);
-            $('#stat-saved').text(formatBytes(stats.saved_bytes));
+            if (!stats) return;
+            $('#stat-total').text(stats.total_images || 0);
+            $('#stat-optimized').text(stats.optimized_images || 0);
+            $('#stat-pending').text(stats.pending_images || 0);
+            $('#stat-saved').text(formatBytes(stats.saved_bytes || 0));
         }
 
         function logMessage(msg, className) {
@@ -311,7 +471,7 @@
         }
 
         function formatBytes(bytes) {
-            if (bytes <= 0) return '0 B';
+            if (!bytes || bytes <= 0) return '0 B';
             var k = 1024;
             var sizes = ['B', 'KB', 'MB', 'GB'];
             var i = Math.floor(Math.log(bytes) / Math.log(k));

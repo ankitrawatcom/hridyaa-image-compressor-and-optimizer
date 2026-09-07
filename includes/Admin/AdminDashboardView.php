@@ -283,8 +283,8 @@ class AdminDashboardView {
                                         <strong><?php esc_html_e('WebP Format', 'nextgen-image-optimizer'); ?></strong>
                                         <span class="nextgen-subtext"><?php esc_html_e('Standard modern image format supported by 96%+ of web browsers', 'nextgen-image-optimizer'); ?></span>
                                     </td>
-                                    <td><?php echo esc_html(sprintf(__('%s files', 'nextgen-image-optimizer'), number_format_i18n($webpCount))); ?></td>
-                                    <td><strong><?php echo esc_html($webpSaved); ?></strong></td>
+                                    <td><?php echo esc_html($webpCount > 0 ? sprintf(__('%s files', 'nextgen-image-optimizer'), number_format_i18n($webpCount)) : '—'); ?></td>
+                                    <td><strong><?php echo esc_html($webpCount > 0 ? $webpSaved : '—'); ?></strong></td>
                                     <td><span class="nextgen-badge nextgen-badge-success"><span class="dashicons dashicons-yes-alt"></span> <?php esc_html_e('ACTIVE (FREE)', 'nextgen-image-optimizer'); ?></span></td>
                                 </tr>
                                 <tr>
@@ -307,6 +307,7 @@ class AdminDashboardView {
                             </tbody>
                         </table>
 
+                        <?php if (!\NextGen\Core\Features::isProActive()): ?>
                         <!-- Compact Free vs Pro Comparison Table -->
                         <div style="margin-top: 24px;">
                             <h3 style="font-size: 14px; font-weight: 700; color: #0f172a; margin: 0 0 10px; display: flex; align-items: center; gap: 6px;">
@@ -385,6 +386,7 @@ class AdminDashboardView {
                                 </div>
                             </div>
                         </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Quick Actions Grid Card -->
@@ -471,6 +473,7 @@ class AdminDashboardView {
                         </div>
                     </div>
 
+                    <?php if (!\NextGen\Core\Features::isProActive()): ?>
                     <!-- Pro Upsell Card -->
                     <div class="nextgen-card nextgen-card-pro-upsell">
                         <div class="nextgen-pro-badge"><?php esc_html_e('HRIDYAA PRO', 'hridyaa-image-compressor-and-optimizer'); ?></div>
@@ -498,6 +501,7 @@ class AdminDashboardView {
                             </a>
                         </div>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

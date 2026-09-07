@@ -96,6 +96,7 @@ class PreviewGenerator {
             return [
                 'success'          => true,
                 'preview_url'      => $previewUrl,
+                'original_url'     => function_exists('wp_get_attachment_url') ? (wp_get_attachment_url($attachmentId) ?: '') : '',
                 'original_size'    => $sourceSize,
                 'preview_size'     => $previewSize,
                 'bytes_saved'      => $bytesSaved,
@@ -127,6 +128,7 @@ class PreviewGenerator {
         return [
             'success'          => true,
             'preview_url'      => $previewUrl,
+            'original_url'     => function_exists('wp_get_attachment_url') ? (wp_get_attachment_url($attachmentId) ?: '') : '',
             'original_size'    => $sourceSize,
             'preview_size'     => $previewSize,
             'bytes_saved'      => $bytesSaved,
@@ -157,7 +159,7 @@ class PreviewGenerator {
     /**
      * Purge abandoned preview files older than max age.
      *
-     * @param int $maxAgeSeconds Maximum file age in seconds (default: 86400 / 24 hours).
+     * @param int $maxAgeSeconds Maximum file age in seconds (default: 86400 / 24 hours). If 0 or negative, purges all preview files.
      * @return int Number of files purged.
      */
     public static function cleanupExpiredPreviews(int $maxAgeSeconds = 86400): int {
@@ -172,11 +174,11 @@ class PreviewGenerator {
         $purged = 0;
         $files = glob($previewDir . '/preview_*');
 
-        if ($files) {
+        if (is_array($files)) {
             foreach ($files as $file) {
                 if (is_file($file)) {
                     $mtime = @filemtime($file);
-                    if ($mtime && ($now - $mtime) > $maxAgeSeconds) {
+                    if ($maxAgeSeconds <= 0 || ($mtime !== false && ($now - $mtime) >= $maxAgeSeconds)) {
                         if (@unlink($file)) {
                             $purged++;
                         }
@@ -186,6 +188,16 @@ class PreviewGenerator {
         }
 
         return $purged;
+    }
+
+    /**
+     * Clean old preview files (alias for cleanupExpiredPreviews).
+     *
+     * @param int $maxAgeSeconds Maximum file age in seconds (default: 86400 / 24 hours).
+     * @return int Number of files purged.
+     */
+    public static function cleanOldPreviews(int $maxAgeSeconds = 86400): int {
+        return self::cleanupExpiredPreviews($maxAgeSeconds);
     }
 
     /**

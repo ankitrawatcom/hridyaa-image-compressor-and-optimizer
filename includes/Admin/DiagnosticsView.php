@@ -106,6 +106,7 @@ class DiagnosticsView {
                         </ul>
                     </div>
 
+                    <?php if (!\NextGen\Core\Features::isProActive()): ?>
                     <!-- Pro Card -->
                     <div class="nextgen-card nextgen-card-pro-upsell">
                         <div class="nextgen-pro-badge"><?php esc_html_e('PRO ADDON', 'nextgen-image-optimizer'); ?></div>
@@ -116,6 +117,7 @@ class DiagnosticsView {
                             <?php esc_html_e('Upgrade to Pro', 'nextgen-image-optimizer'); ?>
                         </a>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

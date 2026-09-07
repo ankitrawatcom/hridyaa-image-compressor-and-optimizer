@@ -148,6 +148,7 @@ class HelpView {
                         </ul>
                     </div>
 
+                    <?php if (!\NextGen\Core\Features::isProActive()): ?>
                     <!-- Pro Card -->
                     <div class="nextgen-card nextgen-card-pro-upsell">
                         <div class="nextgen-pro-badge"><?php esc_html_e('HRIDYAA PRO', 'hridyaa-image-compressor-and-optimizer'); ?></div>
@@ -158,6 +159,7 @@ class HelpView {
                             <?php esc_html_e('Upgrade to Pro ★', 'hridyaa-image-compressor-and-optimizer'); ?>
                         </a>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

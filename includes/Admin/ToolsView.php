@@ -34,6 +34,12 @@ class ToolsView {
                 </div>
             <?php endif; ?>
 
+            <?php if (!empty($_GET['tool-error'])): ?>
+                <div class="notice notice-error is-dismissible">
+                    <p><?php echo esc_html(sanitize_text_field($_GET['tool-error'])); ?></p>
+                </div>
+            <?php endif; ?>
+
             <div class="nextgen-grid-main-sidebar">
                 <div class="nextgen-col-main">
                     <!-- Tool 1: Reset Optimization Metadata -->
@@ -101,6 +107,28 @@ class ToolsView {
                             </button>
                         </form>
                     </div>
+
+                    <!-- Tool 4: Reconcile Savings Statistics -->
+                    <div class="nextgen-card">
+                        <div class="nextgen-card-header">
+                            <div class="nextgen-card-header-icon"><span class="dashicons dashicons-chart-bar"></span></div>
+                            <div>
+                                <h2 class="nextgen-card-title"><?php esc_html_e('Reconcile Savings Statistics', 'nextgen-image-optimizer'); ?></h2>
+                                <p class="nextgen-card-desc"><?php esc_html_e('Scans media conversion metadata across your library and updates global storage savings counters.', 'nextgen-image-optimizer'); ?></p>
+                            </div>
+                        </div>
+                        <p class="nextgen-card-text">
+                            <?php esc_html_e('If your Reports or Dashboard counters appear out of sync with your media library, use this tool to recalculate cumulative WebP and AVIF savings.', 'nextgen-image-optimizer'); ?>
+                        </p>
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                            <?php wp_nonce_field('nextgen_tool_reconcile_stats', 'nextgen_tool_nonce'); ?>
+                            <input type="hidden" name="action" value="nextgen_tool_reconcile_stats" />
+                            <button type="submit" class="nextgen-btn nextgen-btn-secondary">
+                                <span class="dashicons dashicons-update"></span>
+                                <?php esc_html_e('Reconcile Savings Statistics', 'nextgen-image-optimizer'); ?>
+                            </button>
+                        </form>
+                    </div>
                 </div>
 
                 <div class="nextgen-col-sidebar">
@@ -115,6 +143,7 @@ class ToolsView {
                         </p>
                     </div>
 
+                    <?php if (!\NextGen\Core\Features::isProActive()): ?>
                     <!-- Pro Card -->
                     <div class="nextgen-card nextgen-card-pro-upsell">
                         <div class="nextgen-pro-badge"><?php esc_html_e('PRO ADDON', 'nextgen-image-optimizer'); ?></div>
@@ -125,6 +154,7 @@ class ToolsView {
                             <?php esc_html_e('Explore Pro Edition', 'nextgen-image-optimizer'); ?>
                         </a>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

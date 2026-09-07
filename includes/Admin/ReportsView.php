@@ -43,6 +43,7 @@ class ReportsView {
         $origFormatted = self::formatBytes($origBytes);
         $webpFormatted = self::formatBytes($webpBytes);
         $webpSaved = self::formatBytes($origBytes - $webpBytes);
+        $isPro = \NextGen\Core\Features::isProActive();
         ?>
         <div class="wrap nextgen-admin-wrap">
             <?php AdminHeaderView::render(__('Optimization Reports & Logs', 'nextgen-image-optimizer'), __('Detailed metrics and format-by-format breakdown of your media library optimization.', 'nextgen-image-optimizer')); ?>
@@ -89,17 +90,35 @@ class ReportsView {
                             <tbody>
                                 <tr>
                                     <td><strong><?php esc_html_e('WebP Format (Free Engine)', 'nextgen-image-optimizer'); ?></strong></td>
-                                    <td><?php echo esc_html($origFormatted); ?></td>
-                                    <td><?php echo esc_html($webpFormatted); ?> (<?php echo esc_html(number_format_i18n($webpCount)); ?> derivatives)</td>
-                                    <td><span class="nextgen-badge nextgen-badge-success"><?php echo esc_html($webpSaved); ?> (<?php echo esc_html($pctSaved); ?>%)</span></td>
+                                    <td><?php echo esc_html($webpCount > 0 ? $origFormatted : '—'); ?></td>
+                                    <td><?php echo esc_html($webpCount > 0 ? $webpFormatted . ' (' . number_format_i18n($webpCount) . ' derivatives)' : sprintf(__('0 B (%s derivatives)', 'nextgen-image-optimizer'), number_format_i18n(0))); ?></td>
+                                    <td>
+                                        <?php if ($webpCount > 0): ?>
+                                            <span class="nextgen-badge nextgen-badge-success"><?php echo esc_html($webpSaved); ?> (<?php echo esc_html($pctSaved); ?>%)</span>
+                                        <?php else: ?>
+                                            <span class="nextgen-badge nextgen-badge-neutral"><?php esc_html_e('0 B (0%)', 'nextgen-image-optimizer'); ?></span>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                                 <tr>
                                     <td><strong><?php esc_html_e('AVIF Format (NextGen Pro)', 'nextgen-image-optimizer'); ?></strong></td>
                                     <td><?php echo esc_html($avifCount > 0 ? $origFormatted : '—'); ?></td>
-                                    <td><?php echo esc_html($avifCount > 0 ? self::formatBytes($avifBytes) . ' (' . number_format_i18n($avifCount) . ' derivatives)' : __('Unlock with Pro', 'nextgen-image-optimizer')); ?></td>
+                                    <td>
+                                        <?php
+                                        if ($avifCount > 0) {
+                                            echo esc_html(self::formatBytes($avifBytes) . ' (' . number_format_i18n($avifCount) . ' derivatives)');
+                                        } elseif ($isPro) {
+                                            echo esc_html(sprintf(__('0 B (%s derivatives)', 'nextgen-image-optimizer'), number_format_i18n(0)));
+                                        } else {
+                                            echo esc_html(__('Unlock with Pro', 'nextgen-image-optimizer'));
+                                        }
+                                        ?>
+                                    </td>
                                     <td>
                                         <?php if ($avifCount > 0): ?>
                                             <span class="nextgen-badge nextgen-badge-success"><?php echo esc_html(self::formatBytes($origBytes - $avifBytes)); ?></span>
+                                        <?php elseif ($isPro): ?>
+                                            <span class="nextgen-badge nextgen-badge-neutral"><?php esc_html_e('0 B (0%)', 'nextgen-image-optimizer'); ?></span>
                                         <?php else: ?>
                                             <span class="nextgen-badge nextgen-badge-neutral"><?php esc_html_e('Available in Pro', 'nextgen-image-optimizer'); ?></span>
                                         <?php endif; ?>
@@ -178,6 +197,7 @@ class ReportsView {
                         </ul>
                     </div>
 
+                    <?php if (!\NextGen\Core\Features::isProActive()): ?>
                     <!-- Pro Upsell Card -->
                     <div class="nextgen-card nextgen-card-pro-upsell">
                         <div class="nextgen-pro-badge"><?php esc_html_e('PRO ADDON', 'nextgen-image-optimizer'); ?></div>
@@ -194,13 +214,14 @@ class ReportsView {
                             <?php esc_html_e('Upgrade to Pro Now', 'nextgen-image-optimizer'); ?>
                         </a>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
         <?php
     }
 
-    private static function formatBytes(int $bytes): string {
+    public static function formatBytes(int $bytes): string {
         if ($bytes <= 0) {
             return '0 B';
         }

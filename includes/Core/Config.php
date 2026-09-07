@@ -94,6 +94,17 @@ class Config {
     public function sanitizeOptions(array $input, array $current = []): array {
         $sanitized = $current ?: self::DEFAULTS;
 
+        if (isset($input['optimization_format'])) {
+            $format = (string) $input['optimization_format'];
+            if (in_array($format, ['webp', 'avif_webp', 'avif'], true)) {
+                if (($format === 'avif' || $format === 'avif_webp') && !Features::isAvifEnabled()) {
+                    $sanitized['optimization_format'] = 'webp';
+                } else {
+                    $sanitized['optimization_format'] = $format;
+                }
+            }
+        }
+
         if (isset($input['webp_quality'])) {
             $quality = (int) $input['webp_quality'];
             $sanitized['webp_quality'] = max(10, min(100, $quality));

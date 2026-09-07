@@ -153,4 +153,62 @@ class MultiTierDeliveryTest extends TestCase {
         $this->assertStringContainsString('<source type="image/avif" srcset="https://example.com/wp-content/uploads/responsive-300x200.jpg.avif 300w, https://example.com/wp-content/uploads/responsive.jpg.avif 800w" sizes="(max-width: 300px) 100vw, 300px">', $output);
         $this->assertStringContainsString('<source type="image/webp" srcset="https://example.com/wp-content/uploads/responsive-300x200.jpg.webp 300w, https://example.com/wp-content/uploads/responsive.jpg.webp 800w" sizes="(max-width: 300px) 100vw, 300px">', $output);
     }
+
+    public function testAvifOnlyFormatSuppressesWebpEvenIfWebpExistsOnDisk(): void {
+        update_option(Config::OPTION_NAME, ['optimization_format' => 'avif']);
+        $cfg = new Config();
+        $delivery = new PictureTagDelivery($cfg);
+
+        $sourceFile = $this->tempDir . '/stale_webp.jpg';
+        file_put_contents($sourceFile, 'JPEG_DATA');
+        file_put_contents($sourceFile . '.webp', 'HISTORICAL_WEBP_DATA');
+
+        // Case 1: Only stale WebP exists, no AVIF yet -> must leave <img> untouched
+        $html = '<img src="https://example.com/wp-content/uploads/stale_webp.jpg" alt="Stale WebP">';
+        $output = $delivery->filterContent($html);
+        $this->assertSame($html, $output, 'When format is avif, stale WebP must not be delivered if AVIF does not exist');
+
+        // Case 2: AVIF generated -> delivers AVIF only, suppresses WebP
+        file_put_contents($sourceFile . '.avif', 'NEW_AVIF_DATA');
+        $output2 = $delivery->filterContent($html);
+        $this->assertStringStartsWith('<picture class="nextgen-picture">', $output2);
+        $this->assertStringContainsString('type="image/avif"', $output2);
+        $this->assertStringNotContainsString('type="image/webp"', $output2);
+    }
+
+    public function testWebpOnlyFormatSuppressesAvifEvenIfAvifExistsOnDisk(): void {
+        update_option(Config::OPTION_NAME, ['optimization_format' => 'webp']);
+        $cfg = new Config();
+        $delivery = new PictureTagDelivery($cfg);
+
+        $sourceFile = $this->tempDir . '/both_formats.jpg';
+        file_put_contents($sourceFile, 'JPEG_DATA');
+        file_put_contents($sourceFile . '.webp', 'WEBP_DATA');
+        file_put_contents($sourceFile . '.avif', 'AVIF_DATA');
+
+        $html = '<img src="https://example.com/wp-content/uploads/both_formats.jpg" alt="WebP Only Mode">';
+        $output = $delivery->filterContent($html);
+
+        $this->assertStringStartsWith('<picture class="nextgen-picture">', $output);
+        $this->assertStringContainsString('type="image/webp"', $output);
+        $this->assertStringNotContainsString('type="image/avif"', $output);
+    }
+
+    public function testAvifWebpFallbackWhenAvifMissingDeliversWebpFallback(): void {
+        update_option(Config::OPTION_NAME, ['optimization_format' => 'avif_webp']);
+        $cfg = new Config();
+        $delivery = new PictureTagDelivery($cfg);
+
+        $sourceFile = $this->tempDir . '/fallback_webp.jpg';
+        file_put_contents($sourceFile, 'JPEG_DATA');
+        file_put_contents($sourceFile . '.webp', 'WEBP_DATA');
+
+        $html = '<img src="https://example.com/wp-content/uploads/fallback_webp.jpg" alt="Fallback WebP">';
+        $output = $delivery->filterContent($html);
+
+        $this->assertStringStartsWith('<picture class="nextgen-picture">', $output);
+        $this->assertStringContainsString('type="image/webp"', $output);
+        $this->assertStringNotContainsString('type="image/avif"', $output);
+        $this->assertStringContainsString($html, $output);
+    }
 }
